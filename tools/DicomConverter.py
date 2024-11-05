@@ -6,9 +6,12 @@ Author: Qiuyi Shen
 """
 
 import os
+import shutil
+import pydicom
 import numpy as np
+from collections import defaultdict
 import SimpleITK as sitk
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 import matplotlib.pyplot as plt
 
 
@@ -200,15 +203,153 @@ class DicomConverter:
         plt.axis("on")
         plt.show()
 
+    @staticmethod
+    def get_series_description(dicom_path: str) -> Optional[str]:
+        """
+        获取DICOM文件的SeriesDescription
+
+        Parameters:
+        -----------
+        dicom_path : str
+            DICOM文件路径
+
+        Returns:
+        --------
+        Optional[str]
+            SeriesDescription，如果不存在则返回None
+        """
+        try:
+            dicom_data = pydicom.dcmread(dicom_path)
+            if hasattr(dicom_data, "SeriesDescription"):
+                return dicom_data.SeriesDescription
+            return None
+        except Exception as e:
+            print(f"读取文件 {dicom_path} 时出错: {str(e)}")
+            return None
+
+    def standardize_dicom_extensions(self, recursive: bool = False) -> None:
+        """
+        将文件夹中的DICOM文件统一添加.dcm扩展名
+
+        Parameters:
+        -----------
+        recursive : bool
+            是否递归处理子文件夹
+        """
+        def process_folder(folder_path: str) -> None:
+            files = os.listdir(folder_path)
+            for file_name in files:
+                file_path = os.path.join(folder_path, file_name)
+                if os.path.isfile(file_path):
+                    try:
+                        pydicom.dcmread(file_path)
+                        if not file_name.lower().endswith('.dcm'):
+                            new_name = file_name.split('.')[0] + '.dcm'
+                            new_path = os.path.join(folder_path, new_name)
+                            os.rename(file_path, new_path)
+                            print(f"Renamed: {file_name} -> {new_name}")
+                    except:
+                        continue
+
+        process_folder(self.folder_path)
+        if recursive:
+            for root, dirs, _ in os.walk(self.folder_path):
+                for dir_name in dirs:
+                    process_folder(os.path.join(root, dir_name))
+
+    def organize_by_series(self, output_base_path: str) -> Dict[str, List[str]]:
+        """
+        根据SeriesDescription组织DICOM文件
+
+        Parameters:
+        -----------
+        output_base_path : str
+            输出基础路径
+
+        Returns:
+        --------
+        Dict[str, List[str]]
+            各系列的文件路径字典
+        """
+        os.makedirs(output_base_path, exist_ok=True)
+
+        series_dict = defaultdict(list)
+
+        total_files = [f for f in os.listdir(self.folder_path)]
+        print(f"开始处理 {len(total_files)} 个文件...")
+
+        for i, file_name in enumerate(total_files, 1):
+            if i % 100 == 0:
+                print(f"已处理 {i}/{len(total_files)} 个文件...")
+
+            file_path = os.path.join(self.folder_path, file_name)
+            series_desc = self.get_series_description(file_path)
+
+            if series_desc:
+                series_desc = "".join(
+                    x for x in series_desc if x.isalnum() or x in [" ", "_", "-"]
+                )
+                series_dict[series_desc].append((file_name, file_path))
+
+        for series_name, files in series_dict.items():
+            print(f"\n处理 {series_name}, 共 {len(files)} 个文件")
+            series_path = os.path.join(output_base_path, series_name)
+
+            if len(files) >= 12 and len(files) % 12 == 0:
+                slice_count = len(files) // 12
+                print(f"分为 {slice_count} 个slice")
+
+                for slice_idx in range(slice_count):
+                    slice_path = os.path.join(series_path, f"Slice{slice_idx + 1}")
+                    os.makedirs(slice_path, exist_ok=True)
+
+                    for file_idx in range(12):
+                        file_index = slice_idx * 12 + file_idx
+                        file_name, src_path = files[file_index]
+                        dst_path = os.path.join(slice_path, file_name)
+                        shutil.copyfile(src_path, dst_path)
+            else:
+                os.makedirs(series_path, exist_ok=True)
+                for file_name, src_path in files:
+                    dst_path = os.path.join(series_path, file_name)
+                    shutil.copyfile(src_path, dst_path)
+
+        return series_dict
+
+    def process_and_organize(self, output_path: str) -> None:
+        """
+        完整的处理流程：标准化扩展名并按series组织
+
+        Parameters:
+        -----------
+        output_path : str
+            输出路径
+        """
+        print("1. 标准化DICOM文件扩展名...")
+        self.standardize_dicom_extensions()
+
+        print("\n2. 按Series组织文件...")
+        self.organize_by_series(output_path)
+
+        print("\n处理完成！")
+
 
 if __name__ == "__main__":
-    # 使用示例
+    # folder_path = r"D:\Code\Playgroud\sample\slice1"
+    # output_folder = r"D:\Data\OrganizedDICOM"
+
+    # converter = DicomConverter(folder_path)
+
+    # converter.standardize_dicom_extensions()
+    # converter.organize_by_series(output_folder)
+    # converter.process_and_organize(output_folder)
+
+    # 示例1：转换所有文件
     folder_path = r"D:\Code\Playgroud\sample\slice1"
     output_path = os.path.join(folder_path, "custom_output.nii.gz")
 
     converter = DicomConverter(folder_path)
 
-    # 示例1：转换所有文件
     converter.convert(output_path=output_path)
 
     # 示例2：只转换前4个文件

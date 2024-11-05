@@ -195,7 +195,7 @@ class HistogramAnalyzer:
         save_path: Optional[str] = None,
     ) -> Tuple[plt.Figure, plt.Axes]:
         """
-        生成组合分析视图
+        生成组合分析视图，包含中位数显示
 
         Parameters:
         -----------
@@ -215,9 +215,22 @@ class HistogramAnalyzer:
         """
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=self.default_figsize)
 
-        self.plot_masked_image(data, mask, slice_num, ax1)
-        self.plot_histogram(data, mask, slice_num, ax2)
+        masked_data = data[mask == 1]
+        median_value = np.median(masked_data)
 
+        self.plot_masked_image(data, mask, slice_num, ax1)
+        ax1.text(
+            0.02,
+            0.98,
+            f"Median: {median_value:.2f}",
+            transform=ax1.transAxes,
+            color="white",
+            bbox=dict(facecolor="black", alpha=0.7),
+            verticalalignment="top",
+        )
+
+        # 右侧：显示直方图和中位数线
+        self.plot_histogram(data, mask, slice_num, ax2)
         plt.tight_layout()
 
         if save_path:
