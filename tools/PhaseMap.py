@@ -8,9 +8,8 @@ Author: Qiuyi Shen
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import ndimage
-import cmath
+import skimage
 import pydicom
-from unwrap import unwrap
 import os
 from typing import List, Tuple, Optional
 
@@ -120,7 +119,8 @@ class PhaseMap:
         for real, imag in zip(dyn_real, dyn_img):
             complex_img = real + 1j * imag
             phase = np.angle(complex_img)
-            phase_deg = np.degrees(phase)
+            unwrapped_phase = skimage.restoration.unwrap_phase(phase)
+            phase_deg = np.degrees(unwrapped_phase)
             complex_arrays.append(phase_deg)
 
         # 计算相位差
